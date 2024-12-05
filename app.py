@@ -59,15 +59,37 @@ def get_html(text: str, is_table: bool = False) -> str:
     # If is_table is True, start the table
     if is_table:
         html_output += "<table style='border-collapse: collapse; width: 100%;'>"
-    
+
     list_open = False
+    table_open = False
     for line in lines:
         line = line.strip()
         if not line:
-            html_output += '<p></p>'
-            continue
+            continue  # Skip blank lines
 
-        if line.startswith("# "):
+        # Check for markdown table structure
+        if "|" in line:
+            if not table_open:
+                html_output += "<tr>"  # Start a table row for the first table line
+                table_open = True
+
+            # Detect table header (usually separated by dashes)
+            if "-" in line:
+                headers = line.split("|")
+                for header in headers:
+                    html_output += f"<th style='border: 1px solid black; padding: 5px; text-align: left;'>{escape_html(header.strip())}</th>"
+                html_output += "</tr>"
+            else:
+                cells = line.split("|")
+                html_output += "<tr>"
+                for cell in cells:
+                    cell_content = cell.strip()
+                    if cell_content:  # Only add <td> if the content is not empty
+                        html_output += f"<td style='border: 1px solid black; padding: 5px;'>{escape_html(cell_content)}</td>"
+                html_output += "</tr>"
+
+        # Handle other markdown formats
+        elif line.startswith("# "):
             html_output += f'<h2>{escape_html(line[2:])}</h2>'
         elif line.startswith("## "):
             html_output += f'<h3>{escape_html(line[3:])}</h3>'
@@ -86,7 +108,7 @@ def get_html(text: str, is_table: bool = False) -> str:
                 list_open = False
 
             line = handle_links(escape_html(line))
-            
+
             if is_table:
                 # Convert line into a table row if 'is_table' is True
                 html_output += f"<tr><td>{line}</td></tr>"
@@ -94,7 +116,7 @@ def get_html(text: str, is_table: bool = False) -> str:
                 html_output += f'<div style="margin-bottom: 10px;">{line}</div>'
 
     # Close the table if 'is_table' is True
-    if is_table:
+    if table_open:
         html_output += "</table>"
 
     html_output += '</div>'
@@ -113,6 +135,25 @@ def generate_system_prompt(user_query, relevant_text):
     Answer the user's question in a professional tone, using no more than 500 words. Do not include any information that is not found in the documents.
     """
 
+# Function to extract table data from the bot's response and format as HTML table
+def extract_table_from_response(response_text):
+    table_data = []
+    
+    # Split the response text by lines and look for potential table rows
+    lines = response_text.split('\n')
+    headers = None
+    for line in lines:
+        # Check for table-like data based on delimiters like "|"
+        if "|" in line:
+            row = [cell.strip() for cell in line.split("|") if cell.strip()]
+            if len(row) > 1:  # Skip invalid rows (empty or single column)
+                if not headers:
+                    headers = row
+                else:
+                    table_data.append(row)
+
+    return headers, table_data
+
 # Chat endpoint
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -121,20 +162,14 @@ def chat():
     if not user_message:
         return jsonify({"error": "No message provided"}), 400
 
-    # Check if the user is asking for a table
-    is_table_request = "table" in user_message.lower()
-
     # Extract content from Word files
     try:
-        # Use relative file paths (make sure files are deployed correctly)
         word_file_1 = './AMRUT-Operational-Guidelines.docx'
-        # word_file_2 = './swachh-bharat-2.docx'
 
         content_1 = extract_text_from_word(word_file_1)
-        # content_2 = extract_text_from_word(word_file_2)
 
         # Combine Word file content
-        relevant_text = content_1 + "\n" 
+        relevant_text = content_1 + "\n"
     except FileNotFoundError as fnfe:
         return jsonify({"error": str(fnfe)}), 404
     except Exception as e:
@@ -169,14 +204,36 @@ def chat():
         # Check if the request was successful
         if response.status_code == 200:
             chatbot_reply = response.json()
-            # Convert the response message to HTML, with or without table format
-            html_response = get_html(chatbot_reply['choices'][0]['message']['content'], is_table=is_table_request)
-            return jsonify({"response": html_response})
-        else:
-            return jsonify({"error": "Error from API", "details": response.text}), 500
+            response_text = chatbot_reply['choices'][0]['message']['content']
 
-    except Exception as e:
+            # Extract table data from the response, if any
+            headers, table_data = extract_table_from_response(response_text)
+
+            # If table data is found, generate the table HTML
+            if table_data:
+                table_html = "<table style='border-collapse: collapse; width: 100%;'>"
+                table_html += "<tr>"
+                for header in headers:
+                    table_html += f"<th style='border: 1px solid black; padding: 5px; text-align: left;'>{escape_html(header)}</th>"
+                table_html += "</tr>"
+
+                for row in table_data:
+                    table_html += "<tr>"
+                    for cell in row:
+                        table_html += f"<td style='border: 1px solid black; padding: 5px;'>{escape_html(cell)}</td>"
+                    table_html += "</tr>"
+                table_html += "</table>"
+
+                return jsonify({"response": table_html})
+
+            return jsonify({"response": response_text})
+
+        else:
+            return jsonify({"error": "Error with API request"}), response.status_code
+
+    except requests.exceptions.RequestException as e:
         return jsonify({"error": str(e)}), 500
 
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
+    app.run(debug=True)
