@@ -4,7 +4,8 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from docx import Document
 import re
-from flask_cors import CORS 
+from flask_cors import CORS
+
 # Load environment variables
 load_dotenv()
 
@@ -15,7 +16,10 @@ CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 # Get the XAI API key from the environment variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 
-# Function to extract text from a Word file
+# Set a file size limit for uploads (16MB limit)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
+# Function to extract text from a Word file in a memory-efficient manner
 def extract_text_from_word(file_path):
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
@@ -122,7 +126,7 @@ def chat():
 
     # Extract content from Word files
     try:
-        # Relative file paths
+        # Use relative file paths (make sure files are deployed correctly)
         word_file_1 = './AMRUT-Operational-Guidelines.docx'
         word_file_2 = './swachh-bharat-2.docx'
 
