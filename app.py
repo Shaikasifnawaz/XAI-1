@@ -128,13 +128,13 @@ def chat():
     try:
         # Use relative file paths (make sure files are deployed correctly)
         word_file_1 = './AMRUT-Operational-Guidelines.docx'
-        word_file_2 = './swachh-bharat-2.docx'
+        # word_file_2 = './swachh-bharat-2.docx'
 
         content_1 = extract_text_from_word(word_file_1)
-        content_2 = extract_text_from_word(word_file_2)
+        # content_2 = extract_text_from_word(word_file_2)
 
         # Combine Word file content
-        relevant_text = content_1 + "\n" + content_2
+        relevant_text = content_1 + "\n" 
     except FileNotFoundError as fnfe:
         return jsonify({"error": str(fnfe)}), 404
     except Exception as e:
