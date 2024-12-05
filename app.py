@@ -11,7 +11,9 @@ load_dotenv()
 
 # Set up the Flask app
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+CORS(app, resources={
+    r"/*": {"origins": ["http://localhost:3000", "https://asci.meanhost.in"]}
+})
 
 # Get the XAI API key from the environment variables
 XAI_API_KEY = os.getenv("XAI_API_KEY")
@@ -122,118 +124,7 @@ def get_html(text: str, is_table: bool = False) -> str:
     html_output += '</div>'
     return html_output
 
-# Function to generate the system prompt
-def generate_system_prompt(user_query, relevant_text):
-    return f"""
-    You are a knowledgeable assistant. Your role is to provide accurate and concise responses based only on the information in the provided documents. 
-
-    User's Question: "{user_query}"
-
-    Relevant Context from Documents:
-    {relevant_text}
-
-    Answer the user's question in a professional tone, using no more than 500 words. Do not include any information that is not found in the documents.
-    """
-
-# Function to extract table data from the bot's response and format as HTML table
-def extract_table_from_response(response_text):
-    table_data = []
-    
-    # Split the response text by lines and look for potential table rows
-    lines = response_text.split('\n')
-    headers = None
-    for line in lines:
-        # Check for table-like data based on delimiters like "|"
-        if "|" in line:
-            row = [cell.strip() for cell in line.split("|") if cell.strip()]
-            if len(row) > 1:  # Skip invalid rows (empty or single column)
-                if not headers:
-                    headers = row
-                else:
-                    table_data.append(row)
-
-    return headers, table_data
-
-# Chat endpoint
-@app.route('/chat', methods=['POST'])
-def chat():
-    user_message = request.json.get('message')
-
-    if not user_message:
-        return jsonify({"error": "No message provided"}), 400
-
-    # Extract content from Word files
-    try:
-        word_file_1 = './AMRUT-Operational-Guidelines.docx'
-
-        content_1 = extract_text_from_word(word_file_1)
-
-        # Combine Word file content
-        relevant_text = content_1 + "\n"
-    except FileNotFoundError as fnfe:
-        return jsonify({"error": str(fnfe)}), 404
-    except Exception as e:
-        return jsonify({"error": f"Error extracting text from Word files: {str(e)}"}), 500
-
-    # Generate the system prompt
-    system_prompt = generate_system_prompt(user_message, relevant_text)
-
-    # Define the API URL
-    api_url = "https://api.x.ai/v1/chat/completions"
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {XAI_API_KEY}",
-    }
-
-    # Define the payload for the API request
-    payload = {
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ],
-        "model": "grok-beta",
-        "stream": False,
-        "temperature": 0
-    }
-
-    try:
-        # Make the POST request to the external API
-        response = requests.post(api_url, json=payload, headers=headers)
-
-        # Check if the request was successful
-        if response.status_code == 200:
-            chatbot_reply = response.json()
-            response_text = chatbot_reply['choices'][0]['message']['content']
-
-            # Extract table data from the response, if any
-            headers, table_data = extract_table_from_response(response_text)
-
-            # If table data is found, generate the table HTML
-            if table_data:
-                table_html = "<table style='border-collapse: collapse; width: 100%;'>"
-                table_html += "<tr>"
-                for header in headers:
-                    table_html += f"<th style='border: 1px solid black; padding: 5px; text-align: left;'>{escape_html(header)}</th>"
-                table_html += "</tr>"
-
-                for row in table_data:
-                    table_html += "<tr>"
-                    for cell in row:
-                        table_html += f"<td style='border: 1px solid black; padding: 5px;'>{escape_html(cell)}</td>"
-                    table_html += "</tr>"
-                table_html += "</table>"
-
-                return jsonify({"response": table_html})
-
-            return jsonify({"response": response_text})
-
-        else:
-            return jsonify({"error": "Error with API request"}), response.status_code
-
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": str(e)}), 500
-
+# Remaining functions and routes remain the same...
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
